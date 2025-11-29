@@ -1,6 +1,6 @@
 # ChatBot Platform - Documentation
 
-> **Project**: ChatBot Platform for Pfizer
+> **Project**: ChatBot Platform
 > **Stack**: Node.js, Bot Framework, LangFlow, Azure Services
 > **Last Updated**: November 2024
 
@@ -85,6 +85,8 @@ For detailed architecture including data flow, storage design, and component int
 | [CB-007](./CB-007-Drug-Query-Flow/) | Drug Query Flow | Feature | Drug information retrieval via RxNorm & MedlinePlus |
 | [CB-007](./CB-007-Dynamic-Lifecycle-Messages/) | Dynamic Lifecycle Messages | Enhancement | LangFlow-generated lifecycle messages |
 | [CB-008](./CB-008-LangFlow-Handler-Refactor/) | LangFlow Handler Refactor | Refactor | Modular sub-flow handlers |
+| [CB-009](./CB-009-Drug-Query-Pipeline/) | Drug Query Pipeline | Feature | RxNorm + MedlinePlus drug information retrieval |
+| [CB-010](./CB-010-MedlinePlus-FreeText-Search/) | MedlinePlus Free-Text Search | Feature | Medical NER + MedlinePlus web search for health topics |
 
 ### 📊 Status Legend
 
@@ -222,6 +224,6 @@ When creating new documentation:
 
 <div align="center">
 
-**Technology** | ChatBot Platform for Pfizer
+**Technology** | ChatBot Platform
 
 </div>

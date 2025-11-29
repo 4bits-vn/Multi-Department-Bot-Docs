@@ -649,6 +649,15 @@ botframework/src/
 │   ├── LifecycleMessageService.js   # ⭐ Dynamic message generation (CB-007)
 │   ├── MSTeamsService.js            # ⭐ Teams communication
 │   ├── ServiceNowService.js         # User validation
+│   ├── RxNormService.js             # ⭐ RxNorm API for drug normalization (CB-009)
+│   ├── MedlinePlusService.js        # ⭐ MedlinePlus Connect API (CB-009)
+│   ├── DrugQueryService.js          # ⭐ Drug query orchestration (CB-009)
+│   ├── Medical/                     # ⭐ Medical query services (CB-010)
+│   │   ├── MedicalQueryOrchestrator.js  # Main medical query orchestrator
+│   │   ├── MedicalNERService.js         # Medical entity extraction
+│   │   ├── MedlinePlusWebSearchService.js # MedlinePlus free-text search
+│   │   ├── MedicalCacheService.js       # Redis/in-memory caching
+│   │   └── index.js                     # Module exports
 │   ├── Logger.js                    # Logging utility
 │   ├── Az.StorageAccount.js         # Azure Blob Storage
 │   ├── Az.StorageAccount.Table.js   # Azure Table Storage
@@ -658,7 +667,9 @@ botframework/src/
 │   ├── bot.routes.js                # Bot endpoints
 │   ├── proactive.routes.js          # Proactive endpoints
 │   ├── admin.routes.js              # Admin endpoints
-│   ├── health.routes.js             # Health check endpoints
+│   ├── health.routes.js             # Health check & API documentation endpoints
+│   ├── drug.routes.js               # Drug query API endpoints (CB-009)
+│   ├── medical.routes.js            # Medical query API endpoints (CB-010)
 │   └── index.js                     # Route aggregator
 │
 ├── middleware/
@@ -667,12 +678,17 @@ botframework/src/
 │   ├── requestLogger.js             # Request logging
 │   └── index.js                     # Middleware exports
 │
+├── config/
+│   ├── index.js                     # Environment configuration
+│   └── swagger.js                   # Swagger/OpenAPI configuration
+│
 └── utils/
     ├── messageExtractor.js          # Parse LangFlow responses
     ├── kbFormatter.js               # Format KB search results
     ├── uuid.js                      # UUID v7 generation
-    ├── intentDetectors.js           # Restart/end conversation detection (CB-006)
+    ├── intentDetectors.js           # Restart/end conversation + drug detection (CB-006, CB-009)
     ├── lifecycleMessages.js         # User-facing lifecycle messages (CB-006)
+    ├── apiDocs.js                   # API documentation utilities
     ├── DACoreUtils.js               # Core utilities
     └── index.js                     # Utility exports
 ```
@@ -793,6 +809,8 @@ LIFECYCLE_MESSAGE_CACHE_TTL=0            # Cache TTL (0 = disabled)
 
 ### API Endpoints
 
+#### Core Endpoints
+
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | POST | `/api/messages` | Primary Azure Bot endpoint |
@@ -804,6 +822,36 @@ LIFECYCLE_MESSAGE_CACHE_TTL=0            # Cache TTL (0 = disabled)
 | GET | `/` | Health check |
 | GET | `/health` | Health probe |
 | GET | `/ready` | Readiness probe |
+
+#### Drug Information API (CB-009)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/drug/query` | Query drug by name (RxNorm + MedlinePlus) |
+| GET | `/api/drug/rxcui/:rxcui` | Query drug by RXCUI |
+| POST | `/api/drug/batch` | Batch query drugs (max 10) |
+| POST | `/api/drug/formatted` | Get formatted drug info for display |
+| GET | `/api/drug/health` | Drug service health check |
+
+#### Medical Information API (CB-010)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/medical/search` | Main medical query (NER + RxNorm + MedlinePlus) |
+| POST | `/api/medical/ner` | Extract medical entities only |
+| GET | `/api/medical/topic/:topic` | Get specific health topic |
+| GET | `/api/medical/topics` | Search health topics (free-text) |
+| POST | `/api/medical/formatted` | Get formatted medical info |
+| GET | `/api/medical/health` | Medical service health check |
+
+#### API Documentation
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api-docs` | Swagger UI (interactive documentation) |
+| GET | `/api/swagger.json` | OpenAPI 3.0 specification |
+| GET | `/api/docs` | Simple JSON API documentation |
+| GET | `/api/docs/endpoints` | Flat list of all endpoints |
 
 ---
 
@@ -823,6 +871,8 @@ LIFECYCLE_MESSAGE_CACHE_TTL=0            # Cache TTL (0 = disabled)
 - [CB-005-Conversation-Loop](./CB-005-Conversation-Loop/) - Conversation loop implementation
 - [CB-006-Conversation-Lifecycle](./CB-006-Conversation-Lifecycle/) - Conversation lifecycle management
 - [CB-007-Dynamic-Lifecycle-Messages](./CB-007-Dynamic-Lifecycle-Messages/) - Dynamic message generation via LangFlow
+- [CB-009-Drug-Query-Pipeline](./CB-009-Drug-Query-Pipeline/) - RxNorm + MedlinePlus drug information
+- [CB-010-MedlinePlus-FreeText-Search](./CB-010-MedlinePlus-FreeText-Search/) - Medical NER + MedlinePlus free-text search
 - [flows/router/README.md](../flows/router/README.md) - Router flow documentation
 - [flows/CHITCHAT/README.md](../flows/CHITCHAT/README.md) - CHITCHAT flow for conversational messages
 - [flows/EXCEPTION/README.md](../flows/EXCEPTION/README.md) - EXCEPTION flow for error messages
