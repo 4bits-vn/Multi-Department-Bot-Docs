@@ -31,7 +31,7 @@ botframework/src/
 │   ├── ServiceNowService.js
 │   └── UserService.js
 └── utils/
-    ├── DXCDACoreUtils.js
+    ├── DACoreUtils.js
     ├── index.js
     └── uuid.js
 ```

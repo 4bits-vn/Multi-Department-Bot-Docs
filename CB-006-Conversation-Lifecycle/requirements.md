@@ -9,7 +9,7 @@
 
 ## Overview
 
-Implement comprehensive conversation lifecycle management for the DXC ChatBot Platform. This feature handles conversation endings, timeouts, restarts, and error recovery to provide a seamless user experience.
+Implement comprehensive conversation lifecycle management for the ChatBot Platform. This feature handles conversation endings, timeouts, restarts, and error recovery to provide a seamless user experience.
 
 ---
 

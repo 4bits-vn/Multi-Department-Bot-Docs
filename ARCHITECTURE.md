@@ -1,4 +1,4 @@
-# DXC ChatBot Platform - Architecture Documentation
+# ChatBot Platform - Architecture Documentation
 
 > **Version**: 1.1
 > **Last Updated**: November 2024
@@ -20,7 +20,7 @@
 
 ## Overview
 
-The DXC ChatBot Platform is an enterprise conversational AI system built on Microsoft Bot Framework, integrated with LangFlow for AI processing. It supports multiple channels (MS Teams, DirectLine) and provides IT support, medical knowledge search, and ticket management capabilities.
+The ChatBot Platform is an enterprise conversational AI system built on Microsoft Bot Framework, integrated with LangFlow for AI processing. It supports multiple channels (MS Teams, DirectLine) and provides IT support, medical knowledge search, and ticket management capabilities.
 
 ### Key Features
 
@@ -640,7 +640,7 @@ botframework/src/
 │
 ├── Handlers/
 │   ├── LangFlowHandler.js           # ⭐ LangFlow integration
-│   └── DXC.WM.AdaptiveCardHandler.js # Adaptive Card builder
+│   └── AdaptiveCardHandler.js       # Adaptive Card builder
 │
 ├── Services/
 │   ├── UserService.js               # ⭐ User & session management
@@ -673,7 +673,7 @@ botframework/src/
     ├── uuid.js                      # UUID v7 generation
     ├── intentDetectors.js           # Restart/end conversation detection (CB-006)
     ├── lifecycleMessages.js         # User-facing lifecycle messages (CB-006)
-    ├── DXCDACoreUtils.js            # Core utilities
+    ├── DACoreUtils.js               # Core utilities
     └── index.js                     # Utility exports
 ```
 
