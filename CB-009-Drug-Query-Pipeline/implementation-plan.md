@@ -174,10 +174,11 @@ Verify all endpoints work correctly:
 
 | Endpoint | Test Command |
 |----------|-------------|
-| POST /api/drug/query | `curl -X POST http://localhost:3978/api/drug/query -H "Content-Type: application/json" -d '{"drugName":"metformin"}'` |
-| GET /api/drug/rxcui/:rxcui | `curl http://localhost:3978/api/drug/rxcui/6809` |
+| GET /api/drug/query | `curl "http://localhost:3978/api/drug/query?drugName=metformin"` |
+| GET /api/drug/rxcui/:rxcui | `curl "http://localhost:3978/api/drug/rxcui/6809"` |
 | POST /api/drug/batch | `curl -X POST http://localhost:3978/api/drug/batch -H "Content-Type: application/json" -d '{"drugNames":["aspirin","ibuprofen"]}'` |
-| GET /api/drug/health | `curl http://localhost:3978/api/drug/health` |
+| GET /api/drug/formatted | `curl "http://localhost:3978/api/drug/formatted?drugName=metformin"` |
+| GET /api/drug/health | `curl "http://localhost:3978/api/drug/health"` |
 
 ## API Call Details
 
@@ -293,17 +294,16 @@ Response:
 ### Manual Testing
 ```bash
 # Test drug query endpoint
-curl -X POST http://localhost:3978/api/drug/query \
-  -H "Content-Type: application/json" \
-  -d '{"drugName": "metformin"}'
+curl "http://localhost:3978/api/drug/query?drugName=metformin"
 
 # Test with misspelling
-curl -X POST http://localhost:3978/api/drug/query \
-  -H "Content-Type: application/json" \
-  -d '{"drugName": "metphormin"}'
+curl "http://localhost:3978/api/drug/query?drugName=metphormin"
+
+# Test formatted drug info
+curl "http://localhost:3978/api/drug/formatted?drugName=aspirin"
 
 # Test health check
-curl http://localhost:3978/api/drug/health
+curl "http://localhost:3978/api/drug/health"
 ```
 
 ## Checklist

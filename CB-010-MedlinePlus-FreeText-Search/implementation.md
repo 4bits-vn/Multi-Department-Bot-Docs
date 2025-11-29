@@ -92,20 +92,22 @@ botframework/src/
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/medical/search` | Main medical query endpoint |
-| POST | `/api/medical/ner` | Extract medical entities only |
+| GET | `/api/medical/search` | Main medical query endpoint |
+| GET | `/api/medical/ner` | Extract medical entities only |
 | GET | `/api/medical/topic/:topic` | Get specific health topic |
 | GET | `/api/medical/topics` | Search health topics (free-text) |
-| POST | `/api/medical/formatted` | Get formatted display text |
+| GET | `/api/medical/formatted` | Get formatted display text |
 | GET | `/api/medical/health` | Health check for services |
 
 ## API Usage Examples
 
 ### Main Medical Search
 ```bash
-curl -X POST http://localhost:3000/api/medical/search \
-  -H "Content-Type: application/json" \
-  -d '{"query": "What are the side effects of metformin?"}'
+# Simple query
+curl "http://localhost:3978/api/medical/search?query=What%20are%20the%20side%20effects%20of%20metformin"
+
+# With optional parameters
+curl "http://localhost:3978/api/medical/search?query=What%20is%20diabetes&language=en&skipCache=false"
 ```
 
 **Response:**
@@ -138,9 +140,7 @@ curl -X POST http://localhost:3000/api/medical/search \
 
 ### NER Extraction
 ```bash
-curl -X POST http://localhost:3000/api/medical/ner \
-  -H "Content-Type: application/json" \
-  -d '{"text": "I take metformin for diabetes and have headaches"}'
+curl "http://localhost:3978/api/medical/ner?text=I%20take%20metformin%20for%20diabetes%20and%20have%20headaches"
 ```
 
 **Response:**
@@ -159,12 +159,17 @@ curl -X POST http://localhost:3000/api/medical/ner \
 
 ### Free-Text Topic Search
 ```bash
-curl "http://localhost:3000/api/medical/topics?q=diabetes"
+curl "http://localhost:3978/api/medical/topics?q=diabetes"
+```
+
+### Formatted Medical Info
+```bash
+curl "http://localhost:3978/api/medical/formatted?query=What%20is%20diabetes"
 ```
 
 ### Health Check
 ```bash
-curl http://localhost:3000/api/medical/health
+curl "http://localhost:3978/api/medical/health"
 ```
 
 ## External APIs Used
@@ -267,13 +272,30 @@ This implementation:
 ## Testing Checklist
 
 ### Manual Testing
+```bash
+# Drug query
+curl "http://localhost:3978/api/medical/search?query=What%20are%20the%20side%20effects%20of%20metformin"
+
+# Condition query
+curl "http://localhost:3978/api/medical/search?query=What%20is%20diabetes"
+
+# NER extraction
+curl "http://localhost:3978/api/medical/ner?text=I%20take%20metformin%20for%20diabetes"
+
+# Topic search
+curl "http://localhost:3978/api/medical/topics?q=asthma"
+
+# Health check
+curl "http://localhost:3978/api/medical/health"
+```
+
 - [ ] Drug query: "What are the side effects of metformin?"
 - [ ] Condition query: "What is diabetes?"
 - [ ] Symptom query: "Why do my eyes feel dry?"
 - [ ] Vague query: "What is a stent?"
 - [ ] Multi-entity query: "I take metformin for diabetes"
 - [ ] Misspelled drug: "What is tylenall?"
-- [ ] NER extraction: `/api/medical/ner`
+- [ ] NER extraction: `/api/medical/ner?text=...`
 - [ ] Topic search: `/api/medical/topics?q=asthma`
 - [ ] Health check: `/api/medical/health`
 

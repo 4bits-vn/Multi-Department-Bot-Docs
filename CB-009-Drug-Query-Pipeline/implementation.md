@@ -158,17 +158,19 @@ All endpoints are pre-existing and functional:
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/drug/query` | Query drug by name |
+| GET | `/api/drug/query` | Query drug by name |
 | GET | `/api/drug/rxcui/:rxcui` | Query by RXCUI |
 | POST | `/api/drug/batch` | Batch query (max 10) |
-| POST | `/api/drug/formatted` | Get formatted display text |
+| GET | `/api/drug/formatted` | Get formatted display text |
 | GET | `/api/drug/health` | Service health check |
 
 ### Example Request
 ```bash
-curl -X POST http://localhost:3978/api/drug/query \
-  -H "Content-Type: application/json" \
-  -d '{"drugName": "metformin"}'
+# Query drug by name
+curl "http://localhost:3978/api/drug/query?drugName=metformin"
+
+# With optional parameters
+curl "http://localhost:3978/api/drug/query?drugName=aspirin&maxAlternatives=5&language=en"
 ```
 
 ### Example Response
@@ -224,22 +226,19 @@ Both RxNorm and MedlinePlus APIs are free public services from the National Libr
 ### Integration Testing
 ```bash
 # Test drug query endpoint
-curl -X POST http://localhost:3978/api/drug/query \
-  -H "Content-Type: application/json" \
-  -d '{"drugName": "metformin"}'
+curl "http://localhost:3978/api/drug/query?drugName=metformin"
 
 # Test with misspelling (fuzzy matching)
-curl -X POST http://localhost:3978/api/drug/query \
-  -H "Content-Type: application/json" \
-  -d '{"drugName": "metphormin"}'
+curl "http://localhost:3978/api/drug/query?drugName=metphormin"
 
 # Test with brand name
-curl -X POST http://localhost:3978/api/drug/query \
-  -H "Content-Type: application/json" \
-  -d '{"drugName": "tylenol"}'
+curl "http://localhost:3978/api/drug/query?drugName=tylenol"
+
+# Test formatted drug info
+curl "http://localhost:3978/api/drug/formatted?drugName=metformin"
 
 # Test health check
-curl http://localhost:3978/api/drug/health
+curl "http://localhost:3978/api/drug/health"
 ```
 
 ### Manual Testing Scenarios

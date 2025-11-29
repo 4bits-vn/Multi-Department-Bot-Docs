@@ -252,9 +252,11 @@ const CACHE_TTL = {
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/medical/search` | POST | Main medical query |
-| `/api/medical/ner` | POST | Extract entities only |
+| `/api/medical/search` | GET | Main medical query |
+| `/api/medical/ner` | GET | Extract entities only |
 | `/api/medical/topic/:topic` | GET | Get specific topic |
+| `/api/medical/topics` | GET | Search health topics |
+| `/api/medical/formatted` | GET | Get formatted display text |
 | `/api/medical/health` | GET | Health check |
 
 ### Step 6: Register Routes
@@ -346,6 +348,23 @@ const ERROR_CODES = {
 - Fallback behavior
 
 ### Manual Testing Checklist
+```bash
+# Drug query
+curl "http://localhost:3978/api/medical/search?query=What%20are%20the%20side%20effects%20of%20metformin"
+
+# Condition query
+curl "http://localhost:3978/api/medical/search?query=What%20is%20diabetes"
+
+# NER extraction
+curl "http://localhost:3978/api/medical/ner?text=I%20take%20metformin%20for%20diabetes"
+
+# Topic search
+curl "http://localhost:3978/api/medical/topics?q=asthma"
+
+# Health check
+curl "http://localhost:3978/api/medical/health"
+```
+
 - [ ] Drug query: "What are the side effects of metformin?"
 - [ ] Condition query: "What is diabetes?"
 - [ ] Symptom query: "Why do my eyes feel dry?"
