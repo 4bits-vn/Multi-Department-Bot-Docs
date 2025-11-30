@@ -165,12 +165,76 @@ OOS_LABEL_TO_SCOPE                  // OOS label mapping
 OOS_THRESHOLD                       // OOS detection threshold
 ```
 
+### Phase 3: Sentence Embedding Similarity
+
+#### 3.1 Route Examples Configuration
+
+Created `src/config/routeExamples.js` with multilingual examples for each route.
+
+#### 3.2 Sentence Embedding Service
+
+Created `src/Services/SentenceEmbeddingService.js`:
+
+```javascript
+// Key features:
+- Uses Xenova/all-MiniLM-L6-v2 model (384-dimensional embeddings)
+- Precomputes embeddings for all route examples on initialization
+- Finds nearest route using cosine similarity
+- Supports dynamic example addition for feedback learning
+```
+
+### Phase 4: Ensemble Voting System
+
+#### 4.1 Ensemble Classification Service
+
+Created `src/Services/EnsembleClassificationService.js`:
+
+```javascript
+const ENSEMBLE_WEIGHTS = {
+    keyword: 0.35,      // High precision, limited coverage
+    zeroShot: 0.40,     // Good coverage, variable precision
+    embedding: 0.25,    // Good for short queries
+};
+```
+
+#### 4.2 API Endpoints
+
+Added new endpoints in `routes/classification.routes.js`:
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/classification/ensemble` | POST | Classify using ensemble voting |
+| `/api/classification/ensemble/init` | POST | Initialize embedding service |
+| `/api/classification/ensemble/stats` | GET | Get ensemble service stats |
+
+#### 4.3 Integration with classifyRoute
+
+Added `useEnsemble` option to `classifyRoute()`:
+
+```javascript
+// Enable via option
+classifyRoute(text, { useEnsemble: true })
+
+// Or enable globally via environment
+CLASSIFICATION_ENSEMBLE_ENABLED=true
+```
+
+## Ensemble Test Results
+
+| # | Query | Route | Confidence | Unanimous |
+|---|-------|-------|------------|-----------|
+| 1 | "buy a bike" | OTHER | medium | ✅ |
+| 2 | "Teams keeps crashing" | IT_KB_SEARCH | medium | ✅ |
+| 3 | "check my mac" | IT_KB_SEARCH | medium | ✅ |
+| 4 | "ticket status please" | IT_TICKET_MGMT | medium | ✅ |
+| 5 | "my screen is low" | IT_KB_SEARCH | medium | ✅ |
+| 6 | "what causes diabetes" | MED_KB_SEARCH | medium | ✅ |
+| 7 | "side effects of aspirin" | MED_DRUG_SEARCH | medium | ✅ |
+| 8 | "hello" | CHIT_CHAT | medium | ✅ |
+| 9 | "talk to an agent" | IT_HELP_DESK | medium | ✅ |
+
 ## Future Enhancements (Pending)
 
-From the implementation plan, the following phases are still pending:
-
-- **Phase 3**: Sentence Embedding Similarity (SetFit-like approach)
-- **Phase 4**: Ensemble Voting System
 - **Phase 5**: Continuous Learning / Feedback Loop
 
 ## References
