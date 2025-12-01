@@ -2,7 +2,7 @@
 
 ## Summary
 
-Implemented the "Get Open Tickets" feature for the Ticket Management flow. Users can now view their currently open IT support tickets through the chatbot.
+Implemented the "Get Open Tickets" feature for the Ticket Management flow. Users can now view their currently open IT support tickets through the chatbot with IT Agent-generated messages and a dropdown for ticket selection.
 
 ## Files Created/Modified
 
@@ -13,13 +13,14 @@ Implemented the "Get Open Tickets" feature for the Ticket Management flow. Users
 | `docs/CB-018-Get-Open-Tickets/requirements.md` | Feature requirements and user story |
 | `docs/CB-018-Get-Open-Tickets/implementation-plan.md` | Detailed implementation plan |
 | `docs/CB-018-Get-Open-Tickets/implementation.md` | This implementation document |
+| `flows/GET_OPEN_TICKETS/README.md` | LangFlow flow documentation |
 
 ### Modified Files
 
 | File | Changes |
 |------|---------|
 | `src/Handlers/LangFlow/config.js` | Added `TICKET_ACTIONS` constants for ticket sub-routing |
-| `src/Handlers/LangFlow/flows/TicketingFlow.js` | Added `handleGetOpenTickets()` and Adaptive Card builder |
+| `src/Handlers/LangFlow/flows/TicketingFlow.js` | Added `handleGetOpenTickets()` with IT Agent integration and dropdown card |
 | `src/Handlers/LangFlow/index.js` | Updated IT_TICKET_MGMT routing to handle GET_ALL_TICKETS action |
 
 ## Key Implementation Details
@@ -39,95 +40,101 @@ const TICKET_ACTIONS = Object.freeze({
 });
 ```
 
-### 2. TicketingFlow.handleGetOpenTickets()
+### 2. Multi-Phase IT Agent Communication
 
-New method that handles the complete "Get Open Tickets" flow:
+The `handleGetOpenTickets()` method now implements a 5-phase flow:
 
 ```javascript
 async handleGetOpenTickets(params) {
-    // Phase 1: Generate acknowledgement message
-    const acknowledgement = {
-        type: 'acknowledgement',
-        message: this._getAcknowledgementMessage(),
-        action: TICKET_ACTIONS.GET_OPEN_TICKETS
-    };
+    // PHASE 1: Call IT Agent for acknowledgement message
+    const acknowledgementMessage = await this._callITAgentForAcknowledgement({...});
 
-    // Phase 2: Fetch tickets from ITSM
+    // PHASE 2: Fetch tickets from ITSM
     const ticketsResult = await this._fetchUserTickets(userEmail);
 
-    // Phase 3: Generate response with Adaptive Card
-    const responseMessage = this._getResponseMessage(ticketsResult);
-    let adaptiveCard = null;
-    if (ticketsResult.success && ticketsResult.tickets.length > 0) {
-        adaptiveCard = this._buildTicketListCard(ticketsResult.tickets);
-    }
+    // PHASE 3: Get conversation context (summary)
+    const summaryResult = await summaryFlow.execute({ sessionId, userEmail });
 
-    return {
-        success: true,
-        acknowledgement,
-        response: {
-            message: responseMessage,
-            action: 'COMPLETED',
-            adaptiveCard
-        },
-        tickets: ticketsResult.tickets,
-        attachments: adaptiveCard ? [{
-            contentType: 'application/vnd.microsoft.card.adaptive',
-            content: adaptiveCard
-        }] : undefined
-    };
+    // PHASE 4: Call IT Agent with results + context for response
+    const responseMessage = await this._callITAgentForResponse({
+        ticketsFound, ticketCount, ticketSummary, conversationContext, ...
+    });
+
+    // PHASE 5: Build Adaptive Card with dropdown
+    const adaptiveCard = this._buildTicketDropdownCard(ticketsResult.tickets);
+
+    return { acknowledgement, response, tickets, attachments };
 }
 ```
 
-### 3. ITSM Integration
+### 3. IT Agent LangFlow Calls
 
-Integrated with existing `IncidentService` to fetch user's open tickets:
+#### Acknowledgement Call (Phase 1)
 
 ```javascript
-async _fetchUserTickets(userEmail) {
-    const result = await incidentService.getIncidents({
-        callerEmail: userEmail,
-        state: 'open',
-        limit: 10,
-        orderBy: 'sys_created_on',
-        orderDir: 'desc'
-    });
-    // ...
+payload = {
+    action: "GET_OPEN_TICKETS",
+    phase: "ACKNOWLEDGEMENT",
+    request: "get_open_tickets"
 }
 ```
 
-### 4. Adaptive Card for Ticket List
+#### Response Call (Phase 4)
+
+```javascript
+payload = {
+    action: "RENDER_RESULTS",
+    phase: "RENDER_RESULTS",
+    ticketsFound: true,
+    ticketCount: 3,
+    ticketSummary: "- INC001: Issue... (In Progress, High)\n...",
+    conversationContext: "User asked about tickets after..."
+}
+```
+
+### 4. Adaptive Card with Dropdown
 
 Created a rich Adaptive Card that displays:
 - Header with ticket count
-- List of tickets showing:
-  - Ticket number (clickable to open in ServiceNow)
-  - Short description
-  - State with icon and color coding
-  - Priority level
-  - Created date
-- "View All in ServiceNow" button
-
-### 5. LangFlowHandler Routing
-
-Updated `processRoutingResult` to handle the GET_ALL_TICKETS action:
+- **Dropdown (Input.ChoiceSet)** for ticket selection
+- Quick summary list of first 5 tickets
+- "View Ticket Details" submit button
+- "View All in ServiceNow" link
 
 ```javascript
-case ROUTING_RESULTS.IT_TICKET_MGMT:
-    const ticketAction = metadata.action || metadata.ticketAction;
+_buildTicketDropdownCard(tickets) {
+    return {
+        type: "AdaptiveCard",
+        body: [
+            { type: "TextBlock", text: "📋 Your Open Tickets (3)" },
+            {
+                type: "Input.ChoiceSet",
+                id: "selectedTicket",
+                style: "compact",
+                placeholder: "Choose a ticket...",
+                choices: [
+                    { title: "🆕 INC001 - Login issue...", value: "INC001" },
+                    // ...
+                ]
+            },
+            // Quick summary list...
+        ],
+        actions: [
+            { type: "Action.Submit", title: "View Ticket Details" },
+            { type: "Action.OpenUrl", title: "View All in ServiceNow" }
+        ]
+    };
+}
+```
 
-    if (ticketAction === "GET_ALL_TICKETS" || ticketAction === "GET_OPEN_TICKETS") {
-        result = await ticketingFlow.handleGetOpenTickets({
-            sessionId,
-            userEmail,
-            channel: metadata.channel || 'msteams',
-            metadata: { ...metadata, originalInput }
-        });
-    } else {
-        // Default ticket management behavior
-        result = await this.callTicketingFlow({...});
-    }
-    break;
+### 5. Conversation Context Integration
+
+Uses `SummaryFlow` to get conversation context for the IT Agent:
+
+```javascript
+const summaryFlow = getSummaryFlow();
+const summaryResult = await summaryFlow.execute({ sessionId, userEmail });
+conversationContext = summaryResult?.summary || '';
 ```
 
 ## Flow Diagram
@@ -136,58 +143,76 @@ case ROUTING_RESULTS.IT_TICKET_MGMT:
 User: "Show me my tickets"
         │
         ▼
-┌─────────────────────────┐
-│  MAIN ROUTER            │
-│  Route: IT_TICKET_MGMT  │
-└──────────┬──────────────┘
-           │
-           ▼
-┌─────────────────────────────┐
-│  SUB_ROUTING Ticket Mgmt    │
-│  Action: GET_ALL_TICKETS    │
-└──────────┬──────────────────┘
-           │
-           ▼
-┌─────────────────────────────────────┐
-│  LangFlowHandler.processRoutingResult │
-│  → ticketingFlow.handleGetOpenTickets() │
-└──────────┬──────────────────────────┘
-           │
-           ├─── Phase 1: Generate acknowledgement
-           │    "Let me fetch your open tickets..."
-           │
-           ├─── Phase 2: Call IncidentService.getIncidents()
-           │    Filter: callerEmail, state='open', limit=10
-           │
-           └─── Phase 3: Generate response + Adaptive Card
-                │
-                ▼
-┌─────────────────────────────────────┐
-│  Bot sends proactive message        │
-│  with Adaptive Card (if tickets)    │
-└─────────────────────────────────────┘
+┌──────────────────────────────┐
+│  MAIN ROUTER                  │
+│  Route: IT_TICKET_MGMT        │
+└───────────┬──────────────────┘
+            │
+            ▼
+┌──────────────────────────────┐
+│  SUB_ROUTING Ticket Mgmt      │
+│  Action: GET_ALL_TICKETS      │
+└───────────┬──────────────────┘
+            │
+            ▼
+┌──────────────────────────────────────────────────┐
+│  ticketingFlow.handleGetOpenTickets()             │
+│                                                   │
+│ PHASE 1: Call IT Agent → Acknowledgement msg      │
+│          "Let me fetch your open tickets..."      │
+│                                                   │
+│ PHASE 2: Call IncidentService.getIncidents()      │
+│          → Fetches tickets from ServiceNow        │
+│                                                   │
+│ PHASE 3: Call SummaryFlow.execute()               │
+│          → Gets conversation context              │
+│                                                   │
+│ PHASE 4: Call IT Agent → Response msg             │
+│          "I found 3 open tickets..."              │
+│                                                   │
+│ PHASE 5: Build Adaptive Card with dropdown        │
+└───────────┬──────────────────────────────────────┘
+            │
+            ▼
+┌──────────────────────────────────────────────────┐
+│  Bot sends proactive message with:                │
+│  - IT Agent generated response message            │
+│  - Adaptive Card with dropdown for selection      │
+└──────────────────────────────────────────────────┘
 ```
 
-## Known Limitations
+## Fallback Handling
 
-1. **LangFlow Flow Not Yet Created**: The implementation currently uses hardcoded messages. A LangFlow GET_OPEN_TICKETS flow can be created later for dynamic message generation.
+If IT Agent (LangFlow) is unavailable, the system uses fallback messages:
 
-2. **No Two-Phase Proactive Messaging Yet**: The current implementation returns both acknowledgement and response together. Future enhancement could send acknowledgement first, then fetch tickets and send response separately.
+```javascript
+_getFallbackAcknowledgementMessage() {
+    return "Let me fetch your open tickets. One moment please... 🔍";
+}
 
-3. **Ticket Limit**: Currently limited to 10 tickets. Could add pagination in future.
+_getFallbackResponseMessage(ticketsResult) {
+    if (count === 0) {
+        return "Good news! 🎉 I couldn't find any open tickets...";
+    }
+    return `I found ${count} open tickets. Please select from dropdown...`;
+}
+```
 
 ## Testing Notes
 
 ### Test Scenarios
 
 1. **User with open tickets**:
-   - Expected: Acknowledgement + Adaptive Card with ticket list
+   - Expected: IT Agent acknowledgement + dropdown card with tickets
 
 2. **User with no open tickets**:
-   - Expected: Message "I couldn't find any open tickets"
+   - Expected: IT Agent response "I couldn't find any open tickets"
 
-3. **ITSM service unavailable**:
-   - Expected: Error message from _getResponseMessage
+3. **IT Agent unavailable**:
+   - Expected: Fallback messages used instead
+
+4. **ITSM service unavailable**:
+   - Expected: Error message from fallback
 
 ### Test Commands
 
@@ -196,7 +221,7 @@ User: "Show me my tickets"
 cd botframework
 pnpm dev
 
-# Test in Teams or DirectLine with messages like:
+# Test in Teams with messages like:
 # - "Show me my tickets"
 # - "What are my open tickets?"
 # - "List my incidents"
@@ -204,21 +229,24 @@ pnpm dev
 
 ## Future Enhancements
 
-1. **LangFlow Integration**: Create GET_OPEN_TICKETS flow in LangFlow for dynamic messages
-2. **Pagination**: Add "Load more" button for users with many tickets
+1. **Handle Dropdown Selection**: Process Action.Submit to show ticket details
+2. **Pagination**: Add "Load more" for users with many tickets
 3. **Filtering**: Allow filtering by priority, date range, etc.
-4. **Quick Actions**: Add "Add Comment" or "Close Ticket" actions directly from card
-5. **Real-time Updates**: WebSocket integration for ticket status changes
+4. **Quick Actions**: Add "Add Comment" or "Close Ticket" from card
+5. **Real-time Updates**: WebSocket for ticket status changes
 
 ## Dependencies
 
 - `IncidentService` - ITSM integration layer (existing)
 - `MSTeamsService` - Proactive messaging (existing)
 - `ConversationRoutingService` - Route lock management (existing)
+- `SummaryFlow` - Conversation summarization (existing, CB-019)
+- `IT_TICKET_MGMT_FLOW` - IT Agent LangFlow flow
 - `SUB_ROUTING - Ticket Management` LangFlow flow (existing)
 
 ## Related Tickets
 
 - CB-012: ITSM Integration APIs
 - CB-016: Conversation Routing
+- CB-019: Conversation Summarization (for context injection)
 - CB-013: Chat Transcript Capture (for transcript attachment in ticket creation)
