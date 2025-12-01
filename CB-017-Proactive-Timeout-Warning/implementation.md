@@ -1,38 +1,46 @@
-# CB-017: Proactive Timeout Warning - Implementation
+# CB-017: Proactive Timeout Warning & Expiration - Implementation
 
 ## Summary
 
-Implemented a proactive timeout warning feature that automatically sends a message to users before their conversation times out, informing them about the upcoming timeout and that subsequent messages will start a new conversation.
+Implemented a proactive timeout system that:
+1. Sends a warning message before conversation timeout
+2. Sends an expiration message AND closes the conversation when timeout occurs
+3. Allows users to return to a fresh conversation without any reactive "session expired" messages
 
 ## Files Created
 
 ### `/botframework/src/Services/ProactiveTimeoutService.js`
 
-New service to manage proactive timeout warning timers:
+New service to manage proactive timeout warning and expiration:
 
-- **Timer Management**: In-memory Map storage for conversation timers
-- **Conversation Info Cache**: Stores user info for proactive messaging
-- **Warning Message Generation**: Uses LangFlow OTHER flow with fallback
-- **Automatic Cleanup**: Periodic cleanup of stale entries
-- **Startup Rehydration**: Restores timers from storage after server restart
+**Timer Storage:**
+- `timers`: Warning timer map (conversationId → timeoutId)
+- `expirationTimers`: Expiration timer map (conversationId → timeoutId)
+- `conversationInfo`: Cache for user info (conversationId → {email, serviceUrl, etc.})
+- `warningSent`: Track warnings sent (conversationId → timestamp)
+- `sessionExpired`: Track sessions expired proactively (conversationId → timestamp)
 
-Key methods:
+**Key Methods:**
 - `resetTimer(conversationId, info)`: Reset/schedule warning timer
-- `clearTimer(conversationId)`: Clear timer on restart/timeout
-- `handleTimeoutWarning(conversationId)`: Send warning message
+- `clearTimer(conversationId)`: Clear all timers (warning + expiration)
+- `handleTimeoutWarning(conversationId)`: Send warning message, schedule expiration
+- `scheduleExpirationTimer(conversationId, info)`: Schedule expiration after warning
+- `handleSessionExpiration(conversationId)`: Send expiration message, close session
 - `generateWarningMessage(info)`: Generate warning via OTHER flow
+- `generateExpirationMessage(info)`: Generate expiration via OTHER flow
 - `rehydrateFromStorage(userService)`: Restore timers from storage on startup
 - `getStats()`: Get service statistics
+- `shutdown()`: Clean up all timers
 
 ## Files Modified
 
 ### `/botframework/src/config/index.js`
 
-Added new lifecycle configuration:
+Added lifecycle configuration:
 
 ```javascript
 lifecycle: {
-    // ... existing config
+    conversationTimeoutMinutes: parseInt(process.env.CONVERSATION_TIMEOUT_MINUTES) || 30,
     enableTimeoutWarning: process.env.ENABLE_TIMEOUT_WARNING === "true",
     timeoutWarningMinutes: parseInt(process.env.TIMEOUT_WARNING_MINUTES) || 5,
 }
@@ -40,7 +48,7 @@ lifecycle: {
 
 ### `/botframework/src/utils/lifecycleMessages.js`
 
-Added new message type for proactive timeout warning:
+Added message type for proactive timeout warning:
 
 ```javascript
 // New message type
@@ -49,32 +57,39 @@ TIMEOUT_WARNING_PROACTIVE: 'TIMEOUT_WARNING_PROACTIVE'
 // Category mapping
 [LifecycleMessageType.TIMEOUT_WARNING_PROACTIVE]: MessageCategory.CONVERSATIONAL
 
-// Prompt for OTHER flow
+// Prompt for OTHER flow (warning)
 [LifecycleMessageType.TIMEOUT_WARNING_PROACTIVE]:
-    'Send a friendly reminder that the user has been inactive...'
+    'Send a friendly reminder in 2 sentences, that the user has been inactive...'
 
-// Fallback message
-[LifecycleMessageType.TIMEOUT_WARNING_PROACTIVE]: "⏰ Just a friendly reminder: Your conversation session will expire in a few minutes due to inactivity..."
+// Fallback message (warning)
+[LifecycleMessageType.TIMEOUT_WARNING_PROACTIVE]: "⏰ Just a friendly reminder..."
+```
+
+Updated SESSION_EXPIRED prompt (used for expiration message):
+
+```javascript
+// Prompt for OTHER flow (expiration - used by ProactiveTimeoutService)
+[LifecycleMessageType.SESSION_EXPIRED]:
+    'Start a fresh conversation with the user. Keep it brief...'
 ```
 
 ### `/botframework/src/controllers/bot.controller.js`
 
 Integrated ProactiveTimeoutService:
 
-1. **Import and Initialize**:
 ```javascript
 const { createProactiveTimeoutService } = require('../Services/ProactiveTimeoutService');
 const { otherFlow } = require('../Handlers/LangFlow/flows');
 
 const proactiveTimeoutService = createProactiveTimeoutService({
     msTeamsService,
-    otherFlow
+    otherFlow,
+    userService
 });
 ```
 
-2. **Reset Timer After Message Processing**:
+Reset timer after message processing:
 ```javascript
-// In handleRouterResponse cleanup section
 proactiveTimeoutService.resetTimer(conversationId, {
     email: userEmail,
     serviceUrl,
@@ -82,13 +97,48 @@ proactiveTimeoutService.resetTimer(conversationId, {
 });
 ```
 
-3. **Clear Timer on Restart**:
+Clear timer on restart:
 ```javascript
-// When bot command restart is detected
 proactiveTimeoutService.clearTimer(conversationId);
+```
 
-// When lifecycle check clears session
-proactiveTimeoutService.clearTimer(conversationId);
+### `/botframework/src/Services/ConversationLifecycleService.js`
+
+Updated `handleTimeout()` to return no message:
+
+```javascript
+async handleTimeout(params, timeoutCheck) {
+    // Clear session and reset state
+    await this.clearConversation(email, channel, EndReason.TIMEOUT);
+
+    // CB-017: No message needed - expiration is handled proactively
+    return {
+        handled: true,
+        action: 'timeout_recovery',
+        message: null, // No reactive message
+        shouldContinue: true,
+        metadata: { timeoutType, sessionCleared: true }
+    };
+}
+```
+
+### `/botframework/src/Services/ConversationRoutingService.js`
+
+Removed SESSION_EXPIRED message and updated `handleExpiredLock()`:
+
+```javascript
+async handleExpiredLock(email, channel, message, startTime) {
+    await this.releaseRoute(email, channel, 'timeout');
+    const classification = await this.classifyMessage(message);
+    // ...
+    return {
+        success: true,
+        route: classification.route,
+        handled: false, // Don't mark as handled - let flow continue
+        action: 'GO',   // No message, just continue
+        routingTimeMs: Date.now() - startTime
+    };
+}
 ```
 
 ### `/botframework/src/Services/UserService.js`
@@ -96,28 +146,27 @@ proactiveTimeoutService.clearTimer(conversationId);
 Added method to query active conversations:
 
 ```javascript
-async getActiveConversations(options = {})
+async getActiveConversations(options = {}) {
+    const { maxAgeMs, channel } = options;
+    // Query conversations with valid conversationId, serviceUrl
+    // Filter by lastActivityAt within timeframe
+    // Return for timeout rehydration
+}
 ```
-
-Returns conversations that:
-- Have valid `conversationId` and `serviceUrl`
-- Have activity within the specified timeframe
-- Are not in IDLE or COMPLETED lifecycle state
 
 ### `/botframework/src/server.js`
 
 Added startup rehydration:
 
 ```javascript
-// Rehydrate timeout warning timers from storage (CB-017)
 setTimeout(() => {
     rehydrateTimeoutWarnings();
 }, 2000);
 ```
 
-Added cleanup on shutdown:
+Added shutdown cleanup:
+
 ```javascript
-// Cleanup proactive timeout service (CB-017)
 const proactiveTimeoutService = getProactiveTimeoutService();
 if (proactiveTimeoutService) {
     proactiveTimeoutService.shutdown();
@@ -132,111 +181,148 @@ if (proactiveTimeoutService) {
 |----------|---------|-------------|
 | `ENABLE_TIMEOUT_WARNING` | `false` | Enable/disable the feature |
 | `TIMEOUT_WARNING_MINUTES` | `5` | Minutes before timeout to send warning |
-| `CONVERSATION_TIMEOUT_MINUTES` | `30` | Total conversation timeout (existing) |
+| `CONVERSATION_TIMEOUT_MINUTES` | `30` | Total conversation timeout |
 
 ### Example Configuration
 
 ```bash
-# Enable timeout warning
+# Enable timeout warning & expiration
 ENABLE_TIMEOUT_WARNING=true
 
 # Send warning 5 minutes before 30-minute timeout
 TIMEOUT_WARNING_MINUTES=5
 CONVERSATION_TIMEOUT_MINUTES=30
 
-# Warning will be sent at 25 minutes of inactivity
+# Timeline:
+# - Warning sent at 25 minutes of inactivity
+# - Expiration sent at 30 minutes of inactivity
+# - Conversation closed at 30 minutes
 ```
 
 ## Flow Diagram
 
-### Normal Operation Flow
+### Complete Flow
+
 ```
 User sends message
         ↓
-Message processed successfully
-        ↓
 proactiveTimeoutService.resetTimer()
         ↓
-Timer scheduled for (30-5=25) minutes
+Warning timer scheduled for (timeout - warning) minutes
         ↓
-... user inactive for 25 minutes ...
+... user inactive for (timeout - warning) minutes ...
         ↓
-handleTimeoutWarning() triggered
+handleTimeoutWarning() fires
         ↓
-Generate warning via OTHER flow
+├── Generate warning via OTHER flow
+├── Send proactive message to Teams
+├── Schedule expiration timer (warning minutes later)
+└── Mark warning as sent
         ↓
-Send proactive message to Teams
+"⏰ Your session will expire in X minutes..."
         ↓
-"⏰ Your session will expire in 5 minutes..."
+... user continues to be inactive ...
         ↓
-... 5 more minutes of inactivity ...
+handleSessionExpiration() fires
         ↓
-Session expires (normal timeout handling)
+├── Check if user became active after warning
+├── If still inactive:
+│   ├── Generate expiration via OTHER flow
+│   ├── Send proactive message to Teams
+│   ├── userService.clearSession()
+│   ├── Set lifecycle_state = TIMED_OUT
+│   └── Mark session as expired
+└── Clean up timers
+        ↓
+"⏰ Your session has expired..."
+Conversation CLOSED
+        ↓
+... some time later ...
+        ↓
+User sends new message
+        ↓
+ConversationLifecycleService.handleTimeout()
+├── Clears session (if needed)
+├── Returns message: null (no reactive message!)
+└── shouldContinue: true
+        ↓
+Bot responds normally to user's message
+(NO "session expired" message - just fresh start!)
 ```
 
 ### Startup Rehydration Flow
+
 ```
 Server starts
         ↓
-Wait 2 seconds (allow services to initialize)
+Wait 2 seconds (services initialize)
         ↓
-rehydrateTimeoutWarnings() called
+rehydrateTimeoutWarnings()
         ↓
-Query active conversations from Azure Table Storage
+Query active conversations from Azure Table
         ↓
 For each conversation:
-├── Already timed out? → Skip (will handle on next user message)
+├── Already timed out? → Skip
 ├── Warning time passed? → Schedule immediate warning (1-10s delay)
-└── Warning time not yet? → Schedule timer for remaining time
+└── Warning time not yet? → Schedule future warning timer
         ↓
-Timers rehydrated, warnings will be sent as scheduled
+Timers rehydrated
 ```
 
 ## Key Design Decisions
 
-1. **In-Memory Timer Storage with Rehydration**: Using JavaScript `setTimeout` with `Map` for simple, efficient timer management. On server restart, timers are rehydrated from Azure Table Storage by checking the `lastActivityAt` timestamp of active conversations.
+1. **Two-Phase Timeout**: Warning timer fires first, then schedules expiration timer. This allows users to become active after warning and cancel expiration.
 
-2. **OTHER Flow for Messages**: The warning message is generated by the LangFlow OTHER flow to maintain consistency with other bot messages and allow for LLM-generated, contextual responses.
+2. **Proactive Session Closure**: When expiration timer fires, the session is closed proactively (clearSession + TIMED_OUT state). No need for reactive handling.
 
-3. **Single Warning Per Session**: Only one warning is sent per timeout period. The `warningSent` flag prevents duplicate warnings.
+3. **No Reactive Messages**: `ConversationLifecycleService.handleTimeout()` returns `message: null`. Users returning after expiration see no "session expired" message.
 
-4. **Non-Blocking**: Timer operations don't block message processing. Proactive message failures are logged but don't affect user experience.
+4. **Activity Check Before Expiration**: Before sending expiration message, check if user became active after warning. If so, cancel expiration.
 
-5. **Configurable Timing**: Both the timeout and warning time are configurable via environment variables.
+5. **OTHER Flow for Messages**: Both warning and expiration messages generated by LangFlow OTHER flow for consistency and natural language.
+
+6. **Rehydration on Restart**: Query Azure Table Storage for active conversations and re-establish timers based on lastActivityAt timestamps.
+
+7. **Clean Timer Management**: Both warning and expiration timers cleared together. Automatic cleanup of stale entries via periodic interval.
 
 ## Testing
 
 ### Quick Test Configuration
 
 ```bash
-# Short timeouts for testing
 ENABLE_TIMEOUT_WARNING=true
 CONVERSATION_TIMEOUT_MINUTES=3
 TIMEOUT_WARNING_MINUTES=1
 
-# Warning sent after 2 minutes of inactivity
-# Timeout at 3 minutes
+# Timeline:
+# - Warning at 2 minutes of inactivity
+# - Expiration at 3 minutes of inactivity
 ```
 
 ### Test Scenarios
 
 | Scenario | Expected Result |
 |----------|-----------------|
-| Enable feature, wait 2 min | Warning message sent |
+| Wait for warning time | Warning message sent |
+| Wait for expiration time | Expiration message sent, session closed |
 | Send message before warning | Timer resets, no warning |
-| Type "restart" | Timer cleared |
-| Send another message after warning | Normal processing continues |
-| Feature disabled | No warnings sent |
+| Send message after warning | Timer resets, no expiration |
+| Return after expiration | Fresh conversation, NO extra message |
+| Type "restart" | All timers cleared |
+| Feature disabled | No warnings or expirations |
+| Server restart | Timers rehydrated from storage |
 
 ## Dependencies
 
 - `MSTeamsService`: For sending proactive messages
-- `OtherFlow`: For generating warning messages via LangFlow
+- `OtherFlow`: For generating warning/expiration messages
+- `UserService`: For session management and conversation queries
 - `config/index.js`: For configuration settings
 
 ## Notes
 
-- The feature is **disabled by default** (`ENABLE_TIMEOUT_WARNING=false`)
+- Feature is **disabled by default** (`ENABLE_TIMEOUT_WARNING=false`)
 - Warning time must be less than conversation timeout time
-- If warning time >= timeout time, feature is effectively disabled
-- Timers are automatically cleaned up for stale conversations
+- If user becomes active after warning, expiration is cancelled
+- Session is closed proactively, so reactive handling just clears any remaining state
+- Timers are in-memory but rehydrated from storage on restart
