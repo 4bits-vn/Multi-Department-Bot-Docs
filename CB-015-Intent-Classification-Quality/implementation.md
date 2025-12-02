@@ -233,6 +233,73 @@ CLASSIFICATION_ENSEMBLE_ENABLED=true
 | 8 | "hello" | CHIT_CHAT | medium | ✅ |
 | 9 | "talk to an agent" | IT_HELP_DESK | medium | ✅ |
 
+## Bug Fix: Application Settings/Mode Queries
+
+### Issue
+
+User intent **"offline mode in outlook"** was incorrectly classified as `OTHER` instead of `IT_KB_SEARCH`.
+
+### Root Cause Analysis
+
+1. **Keyword patterns missing**: Existing IT_KB_SEARCH patterns expected `outlook` followed by problem words (e.g., "outlook is not working"). But queries like "offline mode in outlook" have the application name at the end.
+
+2. **Route examples gap**: All embedding examples were problem statements ("Teams keeps crashing"), not settings/configuration queries.
+
+3. **Pattern coverage**: No patterns for application settings, mode, or configuration queries.
+
+### Fix Applied
+
+#### 1. New Strong Keyword Patterns (English)
+
+```javascript
+// Application settings/mode/feature queries
+/\b(offline|online|cached|sync)\s+(mode|settings?|option)\s+(in|for|on|with)\s+(outlook|teams|excel|word|office|sharepoint|onedrive)/i,
+/\b(outlook|teams|excel|word|office|sharepoint|onedrive)\s+(offline|online|settings?|configuration|setup|mode)/i,
+/\b(how\s+to|enable|disable|turn\s+on|turn\s+off|configure|setup|set\s+up)\s+.{0,20}(outlook|teams|excel|word|office|vpn|wifi)/i,
+```
+
+#### 2. Application Names as Moderate Signal
+
+```javascript
+// Application name alone should be a moderate IT signal
+/\b(outlook|teams|excel|word|office|sharepoint|onedrive|vpn|wifi|printer)\b/i,
+```
+
+#### 3. Multilingual Support (French & Vietnamese)
+
+Added equivalent patterns for French and Vietnamese to maintain multilingual consistency.
+
+#### 4. Route Examples Updated
+
+Added new examples to `src/config/routeExamples.js`:
+- "offline mode in outlook"
+- "outlook offline settings"
+- "how to enable offline mode"
+- "configure outlook settings"
+- "mode hors ligne outlook" (French)
+- "cài đặt outlook" (Vietnamese)
+
+### Test Results After Fix
+
+| # | Query | Expected | Actual | Status |
+|---|-------|----------|--------|--------|
+| 1 | "offline mode in outlook" | IT_KB_SEARCH | IT_KB_SEARCH | ✅ |
+| 2 | "outlook offline settings" | IT_KB_SEARCH | IT_KB_SEARCH | ✅ |
+| 3 | "how to enable offline mode in teams" | IT_KB_SEARCH | IT_KB_SEARCH | ✅ |
+| 4 | "configure outlook settings" | IT_KB_SEARCH | IT_KB_SEARCH | ✅ |
+| 5 | "teams settings not working" | IT_KB_SEARCH | IT_KB_SEARCH | ✅ |
+| 6 | "mode hors ligne outlook" (FR) | IT_KB_SEARCH | IT_KB_SEARCH | ✅ |
+| 7 | "cài đặt outlook" (VI) | IT_KB_SEARCH | IT_KB_SEARCH | ✅ |
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `src/Services/IntentClassificationService.js` | Added application settings/mode patterns for EN, FR, VI |
+| `src/config/routeExamples.js` | Added settings/configuration examples for embedding similarity |
+
+---
+
 ## Future Enhancements (Pending)
 
 - **Phase 5**: Continuous Learning / Feedback Loop
